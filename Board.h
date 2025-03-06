@@ -4,6 +4,8 @@
 #include <array>
 #include <string>
 #include <unordered_map>
+#include <vector>
+
 
 // Simple occupant type: empty, black, white
 enum class Occupant
@@ -11,6 +13,21 @@ enum class Occupant
     EMPTY = 0,
     BLACK,
     WHITE
+};
+
+struct Move {
+    // The indices of the marbles being moved. Typically 1–3 contiguous marbles of the same color.
+    // For example, {10} for a single marble, or {10,11,12} for three in a line.
+    std::vector<int> marbleIndices;
+
+    // Which direction (0..5) - matches Board::DIRECTION_OFFSETS
+    int direction;
+
+    // Is it an inline move or sidestep move? (true = inline, false = side-step)
+    bool isInline;
+
+    // For convenience, store occupant color if you like
+    // Occupant who;
 };
 
 class Board
@@ -31,7 +48,24 @@ public:
     // Each "dxdy" is applied to (m, y).
     static const std::array<std::pair<int, int>, NUM_DIRECTIONS> DIRECTION_OFFSETS;
 
-    Occupant nextToMove = Occupant::BLACK; // or you might store a bool, etc.
+    Occupant nextToMove = Occupant::BLACK;
+
+    // Generate all legal moves for 'side'
+    std::vector<Move> generateMoves(Occupant side) const;
+
+    // Apply a move to *this* board (modifying occupant[]).
+    // Alternatively, you can return a new Board if you prefer a copy-on-write style.
+    void applyMove(const Move& m);
+
+    // Make a notation string like "(b, 2m) i → NW" given a Move & occupant color
+    static std::string moveToNotation(const Move& m, Occupant side);
+
+    // Convert board occupant array to e.g. "C5b,D5b,E4b,..." sorted black first, then white
+    std::string toBoardString() const;
+
+
+    std::string indexToNotation(int idx) const;
+
 
     // Hardcode these:
     void initStandardLayout();

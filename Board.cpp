@@ -5,6 +5,8 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <algorithm>
+#include <iostream>
 
 // Directions in (dm, dy) form, matching your doc
 const std::array<std::pair<int, int>, Board::NUM_DIRECTIONS> Board::DIRECTION_OFFSETS = { {
@@ -15,6 +17,173 @@ const std::array<std::pair<int, int>, Board::NUM_DIRECTIONS> Board::DIRECTION_OF
     {-1, -1}, // SW
     { 0, -1}  // SE
 } };
+
+//========================== 0) Move Logic ==========================//
+
+
+std::vector<Move> Board::generateMoves(Occupant side) const {
+    std::vector<Move> moves;
+
+    // 1) Find all sets of up to 3 contiguous marbles of 'side'.
+    //    For each possible group, check each of the 6 directions for a legal move.
+
+    // PSEUDOCODE:
+    // for each cell i in [0..60]:
+    //   if occupant[i] == side:
+    //       // check lines of length 1..3 in each direction
+    //       // gather contiguous marbles
+    //       // build Move struct, see if legal, etc.
+
+    // For demonstration, let's pretend we only allow single‐marble moves (no pushing).
+    // We'll just generate "Move 1 Marble in any direction if empty."
+
+    for (int i = 0; i < NUM_CELLS; i++) {
+        if (occupant[i] == side) {
+            // single marble
+            for (int d = 0; d < NUM_DIRECTIONS; d++) {
+                int neighborIdx = neighbors[i][d];
+                if (neighborIdx >= 0) {
+                    // If occupant[neighborIdx] == EMPTY => can move there inline
+                    if (occupant[neighborIdx] == Occupant::EMPTY) {
+                        Move mv;
+                        mv.marbleIndices.push_back(i); // just the one
+                        mv.direction = d;
+                        mv.isInline = true; // single marble "inline" by default
+                        moves.push_back(mv);
+                    }
+                    // else if occupant is not empty, check for push logic, sumito, etc.
+                }
+            }
+        }
+    }
+
+    // This is extremely simplified. Real Abalone logic is more involved.
+
+    return moves;
+}
+
+void Board::applyMove(const Move& m) {
+    // Example: if m.marbleIndices = {i}, direction = d, occupant[i] = side
+    // We'll move occupant[i] into the neighbor cell, occupant of that neighbor becomes side
+    // occupant[i] becomes EMPTY, etc.
+
+    if (m.marbleIndices.empty()) return; // no-op
+
+    // For demonstration, handle single marble only
+    int i = m.marbleIndices[0];
+    Occupant side = occupant[i];
+    int d = m.direction;
+
+    // neighbor in direction d
+    int nIdx = neighbors[i][d];
+    if (nIdx < 0) {
+        // invalid
+        return;
+    }
+
+    // If occupant[nIdx] is empty, we move
+    occupant[i] = Occupant::EMPTY;
+    occupant[nIdx] = side;
+
+    // For real Abalone logic: If occupant[nIdx] is opponent, handle pushing chain, etc.
+}
+
+
+std::string Board::moveToNotation(const Move& m, Occupant side) {
+    // side is 'b' or 'w'
+    // N is m.marbleIndices.size()
+    // 'i' if m.isInline == true, else 's'
+    // direction to D in {W,E,NW,NE,SW,SE}
+
+    std::string notation;
+
+    // Team
+    char teamChar = (side == Occupant::BLACK ? 'b' : 'w');
+
+    // number of marbles
+    int n = (int)m.marbleIndices.size();
+
+    // inline or side
+    char iOrS = (m.isInline ? 'i' : 's');
+
+    // direction string
+    // Suppose directions are: 0=W,1=E,2=NW,3=NE,4=SW,5=SE
+    static const char* DIRS[] = { "W","E","NW","NE","SW","SE" };
+    std::string dir = DIRS[m.direction];
+
+    // e.g. "(b, 2m) s → NW"
+    // or   "(w, 1m) i → E"
+    // matching the doc
+    notation = "(";
+    notation += teamChar;
+    notation += ", ";
+    notation += std::to_string(n);
+    notation += "m) ";
+    notation += iOrS;
+    notation += " → ";
+    notation += dir;
+
+    return notation;
+}
+
+
+std::string Board::toBoardString() const {
+    // Gather occupant positions
+    // We'll store them in two vectors: blackCells, whiteCells
+    std::vector<std::string> blackCells;
+    std::vector<std::string> whiteCells;
+
+    for (int i = 0; i < NUM_CELLS; i++) {
+        if (occupant[i] == Occupant::BLACK) {
+            blackCells.push_back(indexToNotation(i) + "b");
+        }
+        else if (occupant[i] == Occupant::WHITE) {
+            whiteCells.push_back(indexToNotation(i) + "w");
+        }
+    }
+
+    // Sort each vector. 
+    // The notation "A1", "A2", ... "B1" etc. is alphabetical by letter then numeric by col
+    // If your indexToNotation already returns "A1", "B2" in the correct style, 
+    // you can just do a lexicographical sort.
+    auto cmp = [](const std::string& a, const std::string& b) {
+        return a < b; // simple lex order: A2b < A10b, careful with single vs double digit
+        };
+    std::sort(blackCells.begin(), blackCells.end(), cmp);
+    std::sort(whiteCells.begin(), whiteCells.end(), cmp);
+
+    // Combine them (black first, then white)
+    std::vector<std::string> all;
+    all.reserve(blackCells.size() + whiteCells.size());
+    for (auto& bc : blackCells) all.push_back(bc);
+    for (auto& wc : whiteCells) all.push_back(wc);
+
+    // Join them with commas
+    std::string result;
+    for (size_t i = 0; i < all.size(); i++) {
+        if (i > 0) result += ",";
+        result += all[i];
+    }
+
+    return result;
+}
+
+// Helper: index -> e.g. "C5"
+std::string Board::indexToNotation(int idx) const {
+    // s_indexToCoord[idx] => (m, y)
+    auto [m, y] = s_indexToCoord[idx];
+    // y => 'A' + (y-1)
+    char rowLetter = char('A' + (y - 1));
+    // col = m
+
+    // Build string, e.g. "C5"
+    std::string notation;
+    notation.push_back(rowLetter);
+    notation += std::to_string(m);
+    return notation;
+}
+
+
 
 //========================== 1) HARDCODED LAYOUTS ==========================//
 

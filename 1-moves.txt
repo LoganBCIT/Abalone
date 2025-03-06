@@ -1,0 +1,9 @@
+(b, 1m) i → E
+(b, 1m) i → SW
+(b, 1m) i → SE
+(b, 1m) i → W
+(b, 1m) i → E
+(b, 1m) i → SE
+(b, 1m) i → W
+(b, 1m) i → NW
+(b, 1m) i → NE
