@@ -1,26 +1,35 @@
+#include "Board.h"
 #include <iostream>
-#include <string>
-
-std::string getCppVersion() {
-#if __cplusplus == 199711L
-    return "C++98";
-#elif __cplusplus == 201103L
-    return "C++11";
-#elif __cplusplus == 201402L
-    return "C++14";
-#elif __cplusplus == 201703L
-    return "C++17";
-#elif __cplusplus == 202002L
-    return "C++20";
-#elif __cplusplus > 202002L
-    return "C++23 or later";
-#else
-    return "Unknown or pre-standard C++";
-#endif
-}
+#include <fstream> 
 
 int main() {
-    std::cout << "C++ Version: " << getCppVersion()
-        << " (__cplusplus = " << __cplusplus << ")\n";
+    Board board;
+    board.loadFromInputFile("Test1.input");
+    // Suppose nextToMove is now Occupant::BLACK or Occupant::WHITE
+
+    // Generate moves
+    auto moves = board.generateMoves(board.nextToMove);
+
+    std::ofstream movesFile("1-moves.txt");
+    std::ofstream boardsFile("1-boards.txt");
+
+    // For each move:
+    for (auto& m : moves) {
+        // Write the move in the doc notation
+        std::string moveNotation = Board::moveToNotation(m, board.nextToMove);
+        movesFile << moveNotation << "\n";
+
+        // Create a copy to apply the move
+        Board copy = board;
+        copy.applyMove(m);
+
+        // Convert to occupant string
+        std::string occupantStr = copy.toBoardString();
+        boardsFile << occupantStr << "\n";
+    }
+
     return 0;
 }
+
+
+
