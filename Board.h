@@ -31,6 +31,18 @@ public:
     // Each "dxdy" is applied to (m, y).
     static const std::array<std::pair<int, int>, NUM_DIRECTIONS> DIRECTION_OFFSETS;
 
+    Occupant nextToMove = Occupant::BLACK; // or you might store a bool, etc.
+
+    // Hardcode these:
+    void initStandardLayout();
+    void initBelgianDaisyLayout();
+    void initGermanDaisyLayout();
+
+    // Load from your 2-line input file
+    bool loadFromInputFile(const std::string& filename);
+
+    void setOccupant(const std::string& notation, Occupant who);
+
     // Board storage: occupant[i] says who is in cell index i
     std::array<Occupant, NUM_CELLS> occupant;
 
@@ -42,7 +54,7 @@ public:
 
     // Converts "A1", "H5", "I9", etc. to a cell index in [0..60]
     // Returns -1 if invalid
-    static int notationToIndex(const std::string &notation);
+    static int notationToIndex(const std::string& notation);
 
     // Helper to mark occupant of a cell at index
     void setOccupant(int index, Occupant who)
