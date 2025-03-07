@@ -23,17 +23,15 @@ const std::array<std::pair<int, int>, Board::NUM_DIRECTIONS> Board::DIRECTION_OF
 
 std::vector<Move> Board::generateMoves(Occupant side) const {
     std::vector<Move> moves;
-
-    // Human-friendly names for directions.
     static const char* DIRS[] = { "W", "E", "NW", "NE", "SW", "SE" };
 
-    // Loop over all board cells to consider them as a starting cell for a group.
+    // Loop through all board cells.
     for (int i = 0; i < NUM_CELLS; i++) {
-        // Skip cells that do not have our marble.
+        // Process only cells with our marble.
         if (occupant[i] != side)
             continue;
 
-        // --- 1. Single Marble Moves ---
+        // -------- 1. Single Marble Moves --------
         std::cout << "Checking single marble at " << indexToNotation(i) << "\n";
         for (int d = 0; d < NUM_DIRECTIONS; d++) {
             int nIdx = neighbors[i][d];
@@ -41,169 +39,184 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
                 Move mv;
                 mv.marbleIndices.push_back(i);
                 mv.direction = d;
-                mv.isInline = true;  // single marble moves are inline by definition.
-                std::cout << "  Single move: " << indexToNotation(i)
-                    << " -> " << indexToNotation(nIdx)
-                    << " (dir " << d << " [" << DIRS[d] << "])\n";
+                mv.isInline = true; // single marble—no pushing.
+                std::cout << "  Single move: " << indexToNotation(i) << " -> "
+                    << indexToNotation(nIdx) << " (dir " << d << " [" << DIRS[d] << "])\n";
                 moves.push_back(mv);
             }
         }
 
-        // --- 2. Two- and Three-Marble Groups ---
-        // For each direction d, try to form an inline group starting at cell i.
-        // We only form a group if the neighbor in direction d also belongs to us.
+        // -------- 2. Group Formation: Two- and Three-Marble Groups --------
+        // For each direction, see if a friendly marble is adjacent.
         for (int d = 0; d < NUM_DIRECTIONS; d++) {
             int j = neighbors[i][d];
             if (j < 0 || occupant[j] != side)
                 continue;
-
-            // We have at least a 2-marble group: group = {i, j}
+            // We have at least a 2-marble group.
             std::vector<int> group = { i, j };
 
-            // Optionally try to extend to a 3-marble group:
-            int k = neighbors[j][d];
-            if (k >= 0 && occupant[k] == side)
-                group.push_back(k);
+            // Debug: Print 2-marble group attempt.
+            std::cout << "Attempting 2-marble group from " << indexToNotation(i)
+                << " in direction " << d << " [" << DIRS[d] << "]\n";
 
-            // To avoid generating duplicates, only generate the group if i is the smallest index.
+            // Check for duplicate group: only proceed if i is the minimum.
             if (i != *std::min_element(group.begin(), group.end()))
                 continue;
 
-            // Debug: Print the group details.
-            std::string groupStr;
-            for (int cell : group) {
-                groupStr += indexToNotation(cell) + " ";
+            // Generate moves for the 2-marble group.
+            generateGroupMoves(group, d, moves);
+
+            // Now try to extend the group to 3 marbles (in the same direction).
+            int k = neighbors[j][d];
+            if (k >= 0 && occupant[k] == side) {
+                group.push_back(k);
+                std::cout << "Extended group to 3 marbles: ";
+                for (int cell : group)
+                    std::cout << indexToNotation(cell) << " ";
+                std::cout << "(direction " << d << " [" << DIRS[d] << "])\n";
+
+                if (i != *std::min_element(group.begin(), group.end()))
+                    continue;
+
+                // Generate moves for the 3-marble group.
+                generateGroupMoves(group, d, moves);
             }
-            std::cout << "Group formed from " << indexToNotation(i)
-                << " in direction " << d << " (" << DIRS[d] << ")"
-                << " [Group size: " << group.size() << "]: "
-                << groupStr << "\n";
+        }
+    }
+    return moves;
+}
 
-            // ---- Inline Moves for the Group ---- //
+// Helper function to generate moves (inline and side-step) for a given group.
+// The parameter 'd' is the direction in which the group is aligned.
+void Board::generateGroupMoves(const std::vector<int>& group, int d, std::vector<Move>& moves) const {
+    static const char* DIRS[] = { "W", "E", "NW", "NE", "SW", "SE" };
+    // Build a string representation for debugging.
+    std::string groupStr;
+    for (int idx : group)
+        groupStr += indexToNotation(idx) + " ";
+    std::cout << "  Generating moves for group (" << groupStr << "), aligned in direction "
+        << d << " [" << DIRS[d] << "], group size: " << group.size() << "\n";
 
-            // (a) Forward inline move in direction d.
-            int front = group.back();
-            int frontDest = neighbors[front][d];
-            if (frontDest >= 0) {
-                if (occupant[frontDest] == Occupant::EMPTY) {
-                    Move mv;
-                    mv.marbleIndices = group;
-                    mv.direction = d;
-                    mv.isInline = true;
-                    std::cout << "  Inline forward move: Group (" << groupStr << ") can move forward into "
-                        << indexToNotation(frontDest) << " (dir " << d << " [" << DIRS[d] << "])\n";
-                    moves.push_back(mv);
+    // ---- Inline Moves ----
+    // Forward inline: destination for the front marble.
+    int front = group.back();
+    int frontDest = neighbors[front][d];
+    if (frontDest >= 0) {
+        if (occupant[frontDest] == Occupant::EMPTY) {
+            Move mv;
+            mv.marbleIndices = group;
+            mv.direction = d;
+            mv.isInline = true;
+            std::cout << "    Inline forward move: group (" << groupStr << ") can move forward into "
+                << indexToNotation(frontDest) << " (dir " << d << " [" << DIRS[d] << "])\n";
+            moves.push_back(mv);
+        }
+        // Check push possibility forward:
+        else if (occupant[frontDest] != occupant[group[0]]) {  // opponent present
+            int pushLimit = (group.size() == 2 ? 1 : 2);
+            bool canPush = true;
+            int current = frontDest;
+            std::cout << "    Checking forward push for group (" << groupStr
+                << ") in direction " << d << " [" << DIRS[d] << "], starting at "
+                << indexToNotation(frontDest) << "\n";
+            for (int j = 0; j < pushLimit; j++) {
+                int nextChain = neighbors[current][d];
+                std::cout << "      Push chain: " << indexToNotation(current)
+                    << " -> " << (nextChain >= 0 ? indexToNotation(nextChain) : "off-board") << "\n";
+                if (nextChain < 0 || occupant[nextChain] != Occupant::EMPTY) {
+                    canPush = false;
+                    std::cout << "      Cannot push: destination "
+                        << (nextChain >= 0 ? indexToNotation(nextChain) : "off-board")
+                        << " is not empty.\n";
+                    break;
                 }
-                else if (occupant[frontDest] != side) {
-                    int pushLimit = (group.size() == 2 ? 1 : 2);
-                    bool canPush = true;
-                    int current = frontDest;
-                    std::cout << "  Checking forward push for group (" << groupStr
-                        << ") in direction " << d << " (" << DIRS[d] << "), starting at "
-                        << indexToNotation(frontDest) << "\n";
-                    for (int j = 0; j < pushLimit; j++) {
-                        int nextChain = neighbors[current][d];
-                        std::cout << "    Checking push chain: " << indexToNotation(current)
-                            << " -> " << (nextChain >= 0 ? indexToNotation(nextChain) : "off-board") << "\n";
-                        if (nextChain < 0 || occupant[nextChain] != Occupant::EMPTY) {
-                            canPush = false;
-                            std::cout << "    Cannot push: destination "
-                                << (nextChain >= 0 ? indexToNotation(nextChain) : "off-board")
-                                << " is not empty.\n";
-                            break;
-                        }
-                        current = nextChain;
-                    }
-                    if (canPush) {
-                        Move mv;
-                        mv.marbleIndices = group;
-                        mv.direction = d;
-                        mv.isInline = true;
-                        std::cout << "  Forward push move generated for group (" << groupStr << ")\n";
-                        moves.push_back(mv);
-                    }
-                }
+                current = nextChain;
             }
-
-            // (b) Backward inline move in the opposite direction.
-            int opp = (d + 3) % 6;
-            int back = group.front();
-            int backDest = neighbors[back][opp];
-            if (backDest >= 0) {
-                if (occupant[backDest] == Occupant::EMPTY) {
-                    Move mv;
-                    mv.marbleIndices = group;
-                    mv.direction = opp;
-                    mv.isInline = true;
-                    std::cout << "  Inline backward move: Group (" << groupStr << ") can move backward into "
-                        << indexToNotation(backDest) << " (dir " << opp << " [" << DIRS[opp] << "])\n";
-                    moves.push_back(mv);
-                }
-                else if (occupant[backDest] != side) {
-                    int pushLimit = (group.size() == 2 ? 1 : 2);
-                    bool canPush = true;
-                    int current = backDest;
-                    std::cout << "  Checking backward push for group (" << groupStr
-                        << ") in direction " << opp << " (" << DIRS[opp] << "), starting at "
-                        << indexToNotation(backDest) << "\n";
-                    for (int j = 0; j < pushLimit; j++) {
-                        int nextChain = neighbors[current][opp];
-                        std::cout << "    Checking push chain backward: " << indexToNotation(current)
-                            << " -> " << (nextChain >= 0 ? indexToNotation(nextChain) : "off-board") << "\n";
-                        if (nextChain < 0 || occupant[nextChain] != Occupant::EMPTY) {
-                            canPush = false;
-                            std::cout << "    Cannot push backward: destination "
-                                << (nextChain >= 0 ? indexToNotation(nextChain) : "off-board")
-                                << " is not empty.\n";
-                            break;
-                        }
-                        current = nextChain;
-                    }
-                    if (canPush) {
-                        Move mv;
-                        mv.marbleIndices = group;
-                        mv.direction = opp;
-                        mv.isInline = true;
-                        std::cout << "  Backward push move generated for group (" << groupStr << ")\n";
-                        moves.push_back(mv);
-                    }
-                }
-            }
-
-            // ---- Side-Step Moves for the Group ---- //
-            for (int sd = 0; sd < NUM_DIRECTIONS; sd++) {
-                if (sd == d || sd == opp)
-                    continue; // skip inline directions
-
-                bool canSideStep = true;
-                std::cout << "  Checking side-step (dir " << sd << " [" << DIRS[sd]
-                    << "]) for group (" << groupStr << ")\n";
-                    for (int cell : group) {
-                        int dest = neighbors[cell][sd];
-                        std::cout << "    " << indexToNotation(cell) << " -> "
-                            << (dest >= 0 ? indexToNotation(dest) : "off-board") << "\n";
-                        if (dest < 0 || occupant[dest] != Occupant::EMPTY) {
-                            canSideStep = false;
-                            std::cout << "    Cannot side-step: destination not empty or off-board.\n";
-                            break;
-                        }
-                    }
-                    if (canSideStep) {
-                        Move mv;
-                        mv.marbleIndices = group;
-                        mv.direction = sd;
-                        mv.isInline = false;
-                        std::cout << "  Side-step move generated for group (" << groupStr
-                            << ") in direction " << sd << " (" << DIRS[sd] << ")\n";
-                        moves.push_back(mv);
-                    }
+            if (canPush) {
+                Move mv;
+                mv.marbleIndices = group;
+                mv.direction = d;
+                mv.isInline = true;
+                std::cout << "    Forward push move generated for group (" << groupStr << ")\n";
+                moves.push_back(mv);
             }
         }
     }
 
-    return moves;
-}
+    // Backward inline: check in the opposite direction.
+    int opp = (d + 3) % 6;
+    int back = group.front();
+    int backDest = neighbors[back][opp];
+    if (backDest >= 0) {
+        if (occupant[backDest] == Occupant::EMPTY) {
+            Move mv;
+            mv.marbleIndices = group;
+            mv.direction = opp;
+            mv.isInline = true;
+            std::cout << "    Inline backward move: group (" << groupStr << ") can move backward into "
+                << indexToNotation(backDest) << " (dir " << opp << " [" << DIRS[opp] << "])\n";
+            moves.push_back(mv);
+        }
+        else if (occupant[backDest] != occupant[group[0]]) { // opponent present
+            int pushLimit = (group.size() == 2 ? 1 : 2);
+            bool canPush = true;
+            int current = backDest;
+            std::cout << "    Checking backward push for group (" << groupStr
+                << ") in direction " << opp << " [" << DIRS[opp] << "], starting at "
+                << indexToNotation(backDest) << "\n";
+            for (int j = 0; j < pushLimit; j++) {
+                int nextChain = neighbors[current][opp];
+                std::cout << "      Push chain backward: " << indexToNotation(current)
+                    << " -> " << (nextChain >= 0 ? indexToNotation(nextChain) : "off-board") << "\n";
+                if (nextChain < 0 || occupant[nextChain] != Occupant::EMPTY) {
+                    canPush = false;
+                    std::cout << "      Cannot push backward: destination "
+                        << (nextChain >= 0 ? indexToNotation(nextChain) : "off-board")
+                        << " is not empty.\n";
+                    break;
+                }
+                current = nextChain;
+            }
+            if (canPush) {
+                Move mv;
+                mv.marbleIndices = group;
+                mv.direction = opp;
+                mv.isInline = true;
+                std::cout << "    Backward push move generated for group (" << groupStr << ")\n";
+                moves.push_back(mv);
+            }
+        }
+    }
 
+    // ---- Side-Step Moves ----
+    // For side-step moves, check every direction that is not inline.
+    for (int sd = 0; sd < NUM_DIRECTIONS; sd++) {
+        if (sd == d || sd == opp)
+            continue;
+        bool canSideStep = true;
+        std::cout << "    Checking side-step (dir " << sd << " [" << DIRS[sd]
+            << "]) for group (" << groupStr << ")\n";
+            for (int cell : group) {
+                int dest = neighbors[cell][sd];
+                std::cout << "      " << indexToNotation(cell) << " -> "
+                    << (dest >= 0 ? indexToNotation(dest) : "off-board") << "\n";
+                if (dest < 0 || occupant[dest] != Occupant::EMPTY) {
+                    canSideStep = false;
+                    std::cout << "      Cannot side-step: destination not empty or off-board.\n";
+                    break;
+                }
+            }
+            if (canSideStep) {
+                Move mv;
+                mv.marbleIndices = group;
+                mv.direction = sd;
+                mv.isInline = false;
+                std::cout << "    Side-step move generated for group (" << groupStr
+                    << ") in direction " << sd << " [" << DIRS[sd] << "]\n";
+                moves.push_back(mv);
+            }
+    }
+}
 
 
 void Board::applyMove(const Move& m) {
@@ -281,41 +294,40 @@ void Board::applyMove(const Move& m) {
 
 
 std::string Board::moveToNotation(const Move& m, Occupant side) {
-    // side is 'b' or 'w'
-    // N is m.marbleIndices.size()
-    // 'i' if m.isInline == true, else 's'
-    // direction to D in {W,E,NW,NE,SW,SE}
-
     std::string notation;
-
-    // Team
     char teamChar = (side == Occupant::BLACK ? 'b' : 'w');
 
-    // number of marbles
-    int n = (int)m.marbleIndices.size();
+    // Create a vector of cell notations for each index in the move.
+    std::vector<std::string> cellNotations;
+    for (int idx : m.marbleIndices) {
+        cellNotations.push_back(indexToNotation(idx));
+    }
 
-    // inline or side
-    char iOrS = (m.isInline ? 'i' : 's');
+    // Sort in descending order (so that, e.g., F3, E3, D3 appear)
+    std::sort(cellNotations.begin(), cellNotations.end(), std::greater<std::string>());
 
-    // direction string
-    // Suppose directions are: 0=W,1=E,2=NW,3=NE,4=SW,5=SE
-    static const char* DIRS[] = { "W","E","NW","NE","SW","SE" };
-    std::string dir = DIRS[m.direction];
-
-    // e.g. "(b, 2m) s → NW"
-    // or   "(w, 1m) i → E"
-    // matching the doc
+    // Build the notation string.
     notation = "(";
-    notation += teamChar;
+    notation.push_back(teamChar);
     notation += ", ";
-    notation += std::to_string(n);
-    notation += "m) ";
-    notation += iOrS;
+
+    // Append each cell coordinate separated by commas.
+    for (size_t i = 0; i < cellNotations.size(); i++) {
+        if (i > 0)
+            notation += ", ";
+        notation += cellNotations[i];
+    }
+    notation += ") ";
+    // 'i' for inline moves; 's' for side-step moves.
+    notation += (m.isInline ? "i" : "s");
     notation += " → ";
-    notation += dir;
+
+    static const char* DIRS[] = { "W", "E", "NW", "NE", "SW", "SE" };
+    notation += DIRS[m.direction];
 
     return notation;
 }
+
 
 
 std::string Board::toBoardString() const {
@@ -360,7 +372,7 @@ std::string Board::toBoardString() const {
 }
 
 // Helper: index -> e.g. "C5"
-std::string Board::indexToNotation(int idx) const {
+std::string Board::indexToNotation(int idx) {
     // s_indexToCoord[idx] => (m, y)
     auto [m, y] = s_indexToCoord[idx];
     // y => 'A' + (y-1)

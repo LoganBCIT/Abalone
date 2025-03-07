@@ -53,6 +53,8 @@ public:
     // Generate all legal moves for 'side'
     std::vector<Move> generateMoves(Occupant side) const;
 
+    void generateGroupMoves(const std::vector<int>& group, int d, std::vector<Move>& moves) const;
+
     // Apply a move to *this* board (modifying occupant[]).
     // Alternatively, you can return a new Board if you prefer a copy-on-write style.
     void applyMove(const Move& m);
@@ -64,7 +66,7 @@ public:
     std::string toBoardString() const;
 
 
-    std::string indexToNotation(int idx) const;
+    static std::string indexToNotation(int idx);
 
 
     // Hardcode these:
