@@ -5,6 +5,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <algorithm>
+#include <set>
 
 
 // Simple occupant type: empty, black, white
@@ -51,6 +53,11 @@ public:
     static const std::array<std::pair<int, int>, NUM_DIRECTIONS> DIRECTION_OFFSETS;
 
     Occupant nextToMove = Occupant::BLACK;
+
+    // Tries to apply the move on a temporary copy.
+    // Returns true if the move is legal (applied without error),
+    // false otherwise.
+    bool tryMove(const std::vector<int>& group, int direction, Move& move) const;
 
     // Generate all legal moves for 'side'
     std::vector<Move> generateMoves(Occupant side) const;
@@ -126,6 +133,68 @@ private:
 
     // Build the neighbor array
     void initNeighbors();
+
+    // Returns the alignment direction for a group if it is contiguous.
+    // If the group is not aligned, returns -1.
+    int getGroupAlignmentDirection(const std::vector<int>& group) const {
+        if (group.size() < 2)
+            return -1; // For a single marble, we cannot determine alignment.
+
+        // Instead of sorting by index (which might not match spatial order),
+        // convert each index to its coordinate and sort by row (y) then column (m).
+        std::vector<std::pair<int, int>> coords;
+        for (int idx : group) {
+            coords.push_back(s_indexToCoord[idx]); // (m, y)
+        }
+        std::sort(coords.begin(), coords.end(), [](auto a, auto b) {
+            return (a.second < b.second) || (a.second == b.second && a.first < b.first);
+            });
+
+        // Get the coordinate for the first two marbles.
+        auto a = coords[0];
+        auto b = coords[1];
+        // Determine which direction (if any) from a would give b.
+        for (int d = 0; d < NUM_DIRECTIONS; d++) {
+            // Get neighbor of cell 'a' in direction d.
+            int aIdx = notationToIndex(indexToNotation(s_indexToCoordInverse(a)));
+            if (aIdx < 0)
+                continue;
+            if (neighbors[aIdx][d] >= 0) {
+                // Convert neighbor index to coordinate.
+                auto nb = s_indexToCoord[neighbors[aIdx][d]];
+                if (nb == b)
+                    return d;
+            }
+        }
+        return -1; // not aligned
+    }
+
+    // Helper: convert coordinate pair (m,y) back to a string notation.
+    std::string indexToNotation(const std::pair<int, int>& coord) const {
+        char rowLetter = 'A' + (coord.second - 1);
+        return std::string(1, rowLetter) + std::to_string(coord.first);
+    }
+
+    // Helper: given coordinate, return an index that has that coordinate.
+    // (This uses the mapping; here we assume there is exactly one cell with that coordinate.)
+    int s_indexToCoordInverse(const std::pair<int, int>& coord) const {
+        long long key = (static_cast<long long>(coord.first) << 32) ^ (static_cast<long long>(coord.second) & 0xffffffff);
+        auto it = s_coordToIndex.find(key);
+        if (it != s_coordToIndex.end())
+            return it->second;
+        return -1;
+    }
+
+    // Recursively collects all connected groups (as sorted vectors of indices)
+    // of marbles of color 'side' starting from cell 'current' (which is already in 'group'),
+    // and adds them to 'result'. The search stops once group size reaches maxSize (3).
+    void dfsGroup(int current, Occupant side, std::vector<int>& group,
+        std::set<std::vector<int>>& result) const;
+
+    // Checks if all marbles in 'group' are collinear in one of the allowed directions.
+// If so, sets 'alignedDirection' to that direction (0..5) and returns true.
+// Otherwise, returns false.
+    bool isGroupAligned(const std::vector<int>& group, int& alignedDirection) const;
 };
 
 #endif // ABALONE_BOARD_H
