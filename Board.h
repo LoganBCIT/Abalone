@@ -28,6 +28,8 @@ struct Move {
 
     // For convenience, store occupant color if you like
     // Occupant who;
+
+    int pushCount;
 };
 
 class Board

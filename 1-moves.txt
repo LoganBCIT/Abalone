@@ -4,11 +4,14 @@
 (b, D5, C5) i → SE
 (b, E5, D5, C5) i → SE
 (b, F5, E5, D5) i → NW
+(b, F7, E6, D5) i → NE
+(b, F7, E6, D5) i → W
 (b, E4) i → W
 (b, E5, E4) i → SW
 (b, E6, E5, E4) i → E
 (b, E6, E5, E4) i → SW
 (b, F5, E4) i → W
+(b, G6, F5, E4) i → NE
 (b, G6, F5, E4) i → W
 (b, E6, E5) i → E
 (b, F5, E5) i → NW
