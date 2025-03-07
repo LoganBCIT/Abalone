@@ -24,6 +24,9 @@ const std::array<std::pair<int, int>, Board::NUM_DIRECTIONS> Board::DIRECTION_OF
 std::vector<Move> Board::generateMoves(Occupant side) const {
     std::vector<Move> moves;
 
+    // Human-friendly names for directions.
+    static const char* DIRS[] = { "W", "E", "NW", "NE", "SW", "SE" };
+
     // Loop over all board cells to consider them as a starting cell for a group.
     for (int i = 0; i < NUM_CELLS; i++) {
         // Skip cells that do not have our marble.
@@ -40,13 +43,15 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
                 mv.direction = d;
                 mv.isInline = true;  // single marble moves are inline by definition.
                 std::cout << "  Single move: " << indexToNotation(i)
-                    << " -> " << indexToNotation(nIdx) << " (dir " << d << ")\n";
+                    << " -> " << indexToNotation(nIdx)
+                    << " (dir " << d << " [" << DIRS[d] << "])\n";
                 moves.push_back(mv);
             }
         }
 
         // --- 2. Two- and Three-Marble Groups ---
-        // Try to form an inline group from cell i in each direction.
+        // For each direction d, try to form an inline group starting at cell i.
+        // We only form a group if the neighbor in direction d also belongs to us.
         for (int d = 0; d < NUM_DIRECTIONS; d++) {
             int j = neighbors[i][d];
             if (j < 0 || occupant[j] != side)
@@ -55,22 +60,24 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
             // We have at least a 2-marble group: group = {i, j}
             std::vector<int> group = { i, j };
 
-            // Optionally try to extend to a 3-marble group.
+            // Optionally try to extend to a 3-marble group:
             int k = neighbors[j][d];
             if (k >= 0 && occupant[k] == side)
                 group.push_back(k);
 
-            // To avoid duplicates, only generate the group if i is the smallest index.
+            // To avoid generating duplicates, only generate the group if i is the smallest index.
             if (i != *std::min_element(group.begin(), group.end()))
                 continue;
 
-            // Debug: Print the group.
+            // Debug: Print the group details.
             std::string groupStr;
             for (int cell : group) {
                 groupStr += indexToNotation(cell) + " ";
             }
             std::cout << "Group formed from " << indexToNotation(i)
-                << " in direction " << d << ": " << groupStr << "\n";
+                << " in direction " << d << " (" << DIRS[d] << ")"
+                << " [Group size: " << group.size() << "]: "
+                << groupStr << "\n";
 
             // ---- Inline Moves for the Group ---- //
 
@@ -83,16 +90,17 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
                     mv.marbleIndices = group;
                     mv.direction = d;
                     mv.isInline = true;
-                    std::cout << "  Inline forward move: group " << groupStr
-                        << " can move forward into " << indexToNotation(frontDest) << "\n";
+                    std::cout << "  Inline forward move: Group (" << groupStr << ") can move forward into "
+                        << indexToNotation(frontDest) << " (dir " << d << " [" << DIRS[d] << "])\n";
                     moves.push_back(mv);
                 }
                 else if (occupant[frontDest] != side) {
                     int pushLimit = (group.size() == 2 ? 1 : 2);
                     bool canPush = true;
                     int current = frontDest;
-                    std::cout << "  Checking forward push for group " << groupStr
-                        << " starting at " << indexToNotation(frontDest) << "\n";
+                    std::cout << "  Checking forward push for group (" << groupStr
+                        << ") in direction " << d << " (" << DIRS[d] << "), starting at "
+                        << indexToNotation(frontDest) << "\n";
                     for (int j = 0; j < pushLimit; j++) {
                         int nextChain = neighbors[current][d];
                         std::cout << "    Checking push chain: " << indexToNotation(current)
@@ -111,7 +119,7 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
                         mv.marbleIndices = group;
                         mv.direction = d;
                         mv.isInline = true;
-                        std::cout << "  Forward push move generated for group " << groupStr << "\n";
+                        std::cout << "  Forward push move generated for group (" << groupStr << ")\n";
                         moves.push_back(mv);
                     }
                 }
@@ -127,16 +135,17 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
                     mv.marbleIndices = group;
                     mv.direction = opp;
                     mv.isInline = true;
-                    std::cout << "  Inline backward move: group " << groupStr
-                        << " can move backward into " << indexToNotation(backDest) << "\n";
+                    std::cout << "  Inline backward move: Group (" << groupStr << ") can move backward into "
+                        << indexToNotation(backDest) << " (dir " << opp << " [" << DIRS[opp] << "])\n";
                     moves.push_back(mv);
                 }
                 else if (occupant[backDest] != side) {
                     int pushLimit = (group.size() == 2 ? 1 : 2);
                     bool canPush = true;
                     int current = backDest;
-                    std::cout << "  Checking backward push for group " << groupStr
-                        << " starting at " << indexToNotation(backDest) << "\n";
+                    std::cout << "  Checking backward push for group (" << groupStr
+                        << ") in direction " << opp << " (" << DIRS[opp] << "), starting at "
+                        << indexToNotation(backDest) << "\n";
                     for (int j = 0; j < pushLimit; j++) {
                         int nextChain = neighbors[current][opp];
                         std::cout << "    Checking push chain backward: " << indexToNotation(current)
@@ -155,7 +164,7 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
                         mv.marbleIndices = group;
                         mv.direction = opp;
                         mv.isInline = true;
-                        std::cout << "  Backward push move generated for group " << groupStr << "\n";
+                        std::cout << "  Backward push move generated for group (" << groupStr << ")\n";
                         moves.push_back(mv);
                     }
                 }
@@ -164,29 +173,30 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
             // ---- Side-Step Moves for the Group ---- //
             for (int sd = 0; sd < NUM_DIRECTIONS; sd++) {
                 if (sd == d || sd == opp)
-                    continue; // Skip inline directions
+                    continue; // skip inline directions
 
                 bool canSideStep = true;
-                std::cout << "  Checking side-step direction " << sd << " for group " << groupStr << "\n";
-                for (int cell : group) {
-                    int dest = neighbors[cell][sd];
-                    std::cout << "    Side-step: " << indexToNotation(cell) << " -> "
-                        << (dest >= 0 ? indexToNotation(dest) : "off-board") << "\n";
-                    if (dest < 0 || occupant[dest] != Occupant::EMPTY) {
-                        canSideStep = false;
-                        std::cout << "    Cannot side-step: destination not empty or off-board.\n";
-                        break;
+                std::cout << "  Checking side-step (dir " << sd << " [" << DIRS[sd]
+                    << "]) for group (" << groupStr << ")\n";
+                    for (int cell : group) {
+                        int dest = neighbors[cell][sd];
+                        std::cout << "    " << indexToNotation(cell) << " -> "
+                            << (dest >= 0 ? indexToNotation(dest) : "off-board") << "\n";
+                        if (dest < 0 || occupant[dest] != Occupant::EMPTY) {
+                            canSideStep = false;
+                            std::cout << "    Cannot side-step: destination not empty or off-board.\n";
+                            break;
+                        }
                     }
-                }
-                if (canSideStep) {
-                    Move mv;
-                    mv.marbleIndices = group;
-                    mv.direction = sd;
-                    mv.isInline = false;
-                    std::cout << "  Side-step move generated for group " << groupStr
-                        << " in direction " << sd << "\n";
-                    moves.push_back(mv);
-                }
+                    if (canSideStep) {
+                        Move mv;
+                        mv.marbleIndices = group;
+                        mv.direction = sd;
+                        mv.isInline = false;
+                        std::cout << "  Side-step move generated for group (" << groupStr
+                            << ") in direction " << sd << " (" << DIRS[sd] << ")\n";
+                        moves.push_back(mv);
+                    }
             }
         }
     }
@@ -200,16 +210,17 @@ void Board::applyMove(const Move& m) {
     if (m.marbleIndices.empty()) return;
 
     int d = m.direction;
+    static const char* DIRS[] = { "W", "E", "NW", "NE", "SW", "SE" };
+
     std::cout << "Applying move: ";
     std::cout << (occupant[m.marbleIndices[0]] == Occupant::BLACK ? "b" : "w")
-        << ", group: ";
+        << ", group (size " << m.marbleIndices.size() << "): ";
     for (int idx : m.marbleIndices)
         std::cout << indexToNotation(idx) << " ";
-    std::cout << ", direction: " << d
-        << (m.isInline ? " (inline)" : " (side-step)") << "\n";
+    std::cout << ", direction: " << d << " (" << DIRS[d] << ")";
+    std::cout << (m.isInline ? " [inline]" : " [side-step]") << "\n";
 
     if (m.isInline) {
-        // For inline moves, sort group so that the front moves last.
         std::vector<int> sortedGroup = m.marbleIndices;
         std::sort(sortedGroup.begin(), sortedGroup.end());
         int front = sortedGroup.back();
@@ -217,11 +228,11 @@ void Board::applyMove(const Move& m) {
         std::cout << "  Front cell: " << indexToNotation(front)
             << ", destination: " << (dest >= 0 ? indexToNotation(dest) : "off-board") << "\n";
 
-        // If the destination cell is occupied by an opponent, push:
+        // Handle pushing if necessary.
         if (dest >= 0 && occupant[dest] != Occupant::EMPTY && occupant[dest] != occupant[front]) {
             int pushLimit = (sortedGroup.size() == 2 ? 1 : 2);
             int current = dest;
-            std::cout << "  Push detected starting from " << indexToNotation(dest) << "\n";
+            std::cout << "  Push detected starting at " << indexToNotation(dest) << "\n";
             for (int j = 0; j < pushLimit; j++) {
                 int nextChain = neighbors[current][d];
                 std::cout << "    Pushing: " << indexToNotation(current)
@@ -242,7 +253,7 @@ void Board::applyMove(const Move& m) {
                 }
             }
         }
-        // Now move our own marbles starting from the front.
+        // Move own marbles from front to back.
         for (auto it = sortedGroup.rbegin(); it != sortedGroup.rend(); ++it) {
             int idx = *it;
             int target = neighbors[idx][d];
@@ -255,7 +266,7 @@ void Board::applyMove(const Move& m) {
         }
     }
     else {
-        // For side-step moves, move each marble individually.
+        // Side-step moves: move each marble individually.
         for (int idx : m.marbleIndices) {
             int target = neighbors[idx][d];
             std::cout << "  Side-stepping " << indexToNotation(idx) << " to "
@@ -267,8 +278,6 @@ void Board::applyMove(const Move& m) {
         }
     }
 }
-
-
 
 
 std::string Board::moveToNotation(const Move& m, Occupant side) {
