@@ -24,69 +24,211 @@ const std::array<std::pair<int, int>, Board::NUM_DIRECTIONS> Board::DIRECTION_OF
 std::vector<Move> Board::generateMoves(Occupant side) const {
     std::vector<Move> moves;
 
-    // 1) Find all sets of up to 3 contiguous marbles of 'side'.
-    //    For each possible group, check each of the 6 directions for a legal move.
-
-    // PSEUDOCODE:
-    // for each cell i in [0..60]:
-    //   if occupant[i] == side:
-    //       // check lines of length 1..3 in each direction
-    //       // gather contiguous marbles
-    //       // build Move struct, see if legal, etc.
-
-    // For demonstration, let's pretend we only allow single‐marble moves (no pushing).
-    // We'll just generate "Move 1 Marble in any direction if empty."
-
+    // Loop over all board cells to consider them as a starting cell for a group.
     for (int i = 0; i < NUM_CELLS; i++) {
-        if (occupant[i] == side) {
-            // single marble
-            for (int d = 0; d < NUM_DIRECTIONS; d++) {
-                int neighborIdx = neighbors[i][d];
-                if (neighborIdx >= 0) {
-                    // If occupant[neighborIdx] == EMPTY => can move there inline
-                    if (occupant[neighborIdx] == Occupant::EMPTY) {
+        // Skip cells that do not have our marble.
+        if (occupant[i] != side)
+            continue;
+
+        // === 1. Single Marble Moves === //
+        for (int d = 0; d < NUM_DIRECTIONS; d++) {
+            int nIdx = neighbors[i][d];
+            if (nIdx >= 0 && occupant[nIdx] == Occupant::EMPTY) {
+                Move mv;
+                mv.marbleIndices.push_back(i);
+                mv.direction = d;
+                mv.isInline = true;  // single marble is always inline (no push possibility)
+                moves.push_back(mv);
+            }
+        }
+
+        // === 2. Two- and Three-Marble Groups === //
+        // For each direction d, try to form an inline group starting at cell i.
+        // We only form a group if the neighbor in direction d also belongs to us.
+        for (int d = 0; d < NUM_DIRECTIONS; d++) {
+            int j = neighbors[i][d];
+            if (j < 0 || occupant[j] != side)
+                continue;
+
+            // We have at least a 2-marble group: group = {i, j}
+            std::vector<int> group = { i, j };
+
+            // Optionally try to extend to a 3-marble group:
+            int k = neighbors[j][d];
+            if (k >= 0 && occupant[k] == side)
+                group.push_back(k);
+
+            // To avoid generating duplicates, you might decide to only generate the group 
+            // if i is the "first" cell in that group (e.g. if i is the smallest index in the group).
+            if (i != *std::min_element(group.begin(), group.end()))
+                continue;
+
+            // ---- Inline Moves for the Group ---- //
+            // (a) Forward inline move in direction d.
+            // For a group, the "front" is the last cell in the group along d.
+            int front = group.back();
+            int frontDest = neighbors[front][d];
+            if (frontDest >= 0) {
+                // If the destination cell is empty, that is a legal inline move.
+                if (occupant[frontDest] == Occupant::EMPTY) {
+                    Move mv;
+                    mv.marbleIndices = group;
+                    mv.direction = d;
+                    mv.isInline = true;
+                    moves.push_back(mv);
+                }
+                // Else, if the destination is occupied by an opponent, try a push.
+                else if (occupant[frontDest] != side) {
+                    // Determine push limit: for group size 2, we can push 1 opponent;
+                    // for group size 3, we can push up to 2.
+                    int pushLimit = (group.size() == 2 ? 1 : 2);
+                    bool canPush = true;
+                    int current = frontDest;
+                    for (int j = 0; j < pushLimit; j++) {
+                        int nextChain = neighbors[current][d];
+                        if (nextChain < 0 || occupant[nextChain] != Occupant::EMPTY) {
+                            canPush = false;
+                            break;
+                        }
+                        current = nextChain;
+                    }
+                    if (canPush) {
                         Move mv;
-                        mv.marbleIndices.push_back(i); // just the one
+                        mv.marbleIndices = group;
                         mv.direction = d;
-                        mv.isInline = true; // single marble "inline" by default
+                        mv.isInline = true;
                         moves.push_back(mv);
                     }
-                    // else if occupant is not empty, check for push logic, sumito, etc.
+                }
+            }
+            // (b) Backward inline move in the opposite direction.
+            int opp = (d + 3) % 6;
+            int back = group.front();
+            int backDest = neighbors[back][opp];
+            if (backDest >= 0) {
+                if (occupant[backDest] == Occupant::EMPTY) {
+                    Move mv;
+                    mv.marbleIndices = group;
+                    mv.direction = opp;
+                    mv.isInline = true;
+                    moves.push_back(mv);
+                }
+                else if (occupant[backDest] != side) {
+                    int pushLimit = (group.size() == 2 ? 1 : 2);
+                    bool canPush = true;
+                    int current = backDest;
+                    for (int j = 0; j < pushLimit; j++) {
+                        int nextChain = neighbors[current][opp];
+                        if (nextChain < 0 || occupant[nextChain] != Occupant::EMPTY) {
+                            canPush = false;
+                            break;
+                        }
+                        current = nextChain;
+                    }
+                    if (canPush) {
+                        Move mv;
+                        mv.marbleIndices = group;
+                        mv.direction = opp;
+                        mv.isInline = true;
+                        moves.push_back(mv);
+                    }
+                }
+            }
+
+            // ---- Side-Step Moves for the Group ---- //
+            // A side-step move is any move not collinear with the group's alignment.
+            // For each potential side-step direction (all directions except d and its opposite):
+            for (int sd = 0; sd < NUM_DIRECTIONS; sd++) {
+                if (sd == d || sd == opp)
+                    continue; // skip inline directions
+
+                bool canSideStep = true;
+                // For a side step, every marble in the group must have an empty destination.
+                for (int cell : group) {
+                    int dest = neighbors[cell][sd];
+                    if (dest < 0 || occupant[dest] != Occupant::EMPTY) {
+                        canSideStep = false;
+                        break;
+                    }
+                }
+                if (canSideStep) {
+                    Move mv;
+                    mv.marbleIndices = group;
+                    mv.direction = sd;
+                    mv.isInline = false;
+                    moves.push_back(mv);
                 }
             }
         }
     }
 
-    // This is extremely simplified. Real Abalone logic is more involved.
-
     return moves;
 }
 
+
 void Board::applyMove(const Move& m) {
-    // Example: if m.marbleIndices = {i}, direction = d, occupant[i] = side
-    // We'll move occupant[i] into the neighbor cell, occupant of that neighbor becomes side
-    // occupant[i] becomes EMPTY, etc.
+    if (m.marbleIndices.empty()) return;
 
-    if (m.marbleIndices.empty()) return; // no-op
-
-    // For demonstration, handle single marble only
-    int i = m.marbleIndices[0];
-    Occupant side = occupant[i];
     int d = m.direction;
 
-    // neighbor in direction d
-    int nIdx = neighbors[i][d];
-    if (nIdx < 0) {
-        // invalid
-        return;
+    if (m.isInline) {
+        // For inline moves, we want to move the group in order to avoid overwriting.
+        // We assume the group should be moved in the "forward" order.
+        // Determine order: if moving forward (d is the same as the group alignment) then sort so that the front moves last.
+        // (A full implementation would decide order based on geometry; here we use a simple sort by index for demonstration.)
+        std::vector<int> sortedGroup = m.marbleIndices;
+        std::sort(sortedGroup.begin(), sortedGroup.end());
+
+        // Check if the move involves a push. We determine this by looking at the destination of the front marble.
+        int front = sortedGroup.back();
+        int dest = neighbors[front][d];
+        // If dest is occupied by an opponent, we simulate pushing:
+        if (dest >= 0 && occupant[dest] != Occupant::EMPTY && occupant[dest] != occupant[front]) {
+            // For simplicity, assume we push a single opponent marble (or two for a 3-marble group)
+            int pushLimit = (sortedGroup.size() == 2 ? 1 : 2);
+            int current = dest;
+            for (int j = 0; j < pushLimit; j++) {
+                int nextChain = neighbors[current][d];
+                if (nextChain >= 0 && occupant[nextChain] == Occupant::EMPTY) {
+                    // Move the opponent marble
+                    occupant[nextChain] = occupant[current];
+                    occupant[current] = Occupant::EMPTY;
+                    current = nextChain;
+                }
+                else if (nextChain < 0) {
+                    // Marble is pushed off the board: remove it.
+                    occupant[current] = Occupant::EMPTY;
+                    break;
+                }
+                else {
+                    // Cannot push; the move should never have been generated.
+                    return;
+                }
+            }
+        }
+
+        // Now move our own marbles: move them one by one, starting from the front.
+        for (auto it = sortedGroup.rbegin(); it != sortedGroup.rend(); ++it) {
+            int idx = *it;
+            int target = neighbors[idx][d];
+            if (target >= 0 && occupant[target] == Occupant::EMPTY) {
+                occupant[target] = occupant[idx];
+                occupant[idx] = Occupant::EMPTY;
+            }
+        }
     }
-
-    // If occupant[nIdx] is empty, we move
-    occupant[i] = Occupant::EMPTY;
-    occupant[nIdx] = side;
-
-    // For real Abalone logic: If occupant[nIdx] is opponent, handle pushing chain, etc.
+    else {
+        // Side-step moves: move each marble individually.
+        for (int idx : m.marbleIndices) {
+            int target = neighbors[idx][d];
+            if (target >= 0 && occupant[target] == Occupant::EMPTY) {
+                occupant[target] = occupant[idx];
+                occupant[idx] = Occupant::EMPTY;
+            }
+        }
+    }
 }
+
 
 
 std::string Board::moveToNotation(const Move& m, Occupant side) {
