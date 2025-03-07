@@ -85,40 +85,62 @@ void Board::dfsGroup(int current, Occupant side, std::vector<int>& group, std::s
 }
 
 bool Board::isGroupAligned(const std::vector<int>& group, int& alignedDirection) const {
+    // We require at least 2 marbles to define a direction.
     if (group.size() < 2)
-        return false; // single marble is not "aligned" in the pushing sense
+        return false;
 
-    // Get coordinates for the first two marbles.
-    auto coord0 = s_indexToCoord[group[0]]; // (m, y)
-    auto coord1 = s_indexToCoord[group[1]];
+    // Work with a sorted copy of the group.
+    std::vector<int> sortedGroup = group;
+    std::sort(sortedGroup.begin(), sortedGroup.end());
+
+    // Get the coordinate of the first marble.
+    auto coord0 = s_indexToCoord[sortedGroup[0]]; // (m, y)
+    // Determine the candidate direction vector from the first to second marble.
+    auto coord1 = s_indexToCoord[sortedGroup[1]];
     int dx = coord1.first - coord0.first;
     int dy = coord1.second - coord0.second;
+    if (dx == 0 && dy == 0)
+        return false; // should not happen
 
-    // Check each allowed direction.
+    // Try each allowed direction.
     for (int d = 0; d < NUM_DIRECTIONS; d++) {
         auto offset = DIRECTION_OFFSETS[d];
-        if (dx == offset.first && dy == offset.second) {
-            // Now check if every other marble lies on the line starting from coord0.
-            for (size_t i = 2; i < group.size(); i++) {
-                auto coord = s_indexToCoord[group[i]];
-                // Compute differences relative to coord0.
+        // Check if (dx,dy) is a positive multiple of offset.
+        // We require that there exists an integer factor k >= 1 such that:
+        //   dx == k * offset.first and dy == k * offset.second.
+        // To avoid division (and potential rounding issues), we check:
+        if ((offset.first != 0 && dx % offset.first == 0 &&
+            dx / offset.first >= 1 && dy == (dx / offset.first) * offset.second) ||
+            (offset.first == 0 && offset.second != 0 && dy % offset.second == 0 &&
+                dy / offset.second >= 1 && dx == 0)) {
+            // Now verify that every other marble lies along the same ray from coord0.
+            bool aligned = true;
+            int factor = (offset.first != 0) ? dx / offset.first : dy / offset.second;
+            for (size_t i = 2; i < sortedGroup.size(); i++) {
+                auto coord = s_indexToCoord[sortedGroup[i]];
                 int adx = coord.first - coord0.first;
                 int ady = coord.second - coord0.second;
-                // They must be an integer multiple of offset.
-                // For small groups, you can simply check if (adx, ady) equals (offset.first * i, offset.second * i)
-                // assuming the group cells are in order.
-                // A more robust check would use GCD or check proportionality.
-                // For simplicity, assume the cells are sorted (or sort them beforehand) and check:
-                int factor = (i); // expect cell i to be at factor steps from coord0
-                if (adx != offset.first * factor || ady != offset.second * factor)
-                    return false;
+                // Check that (adx,ady) is a positive multiple of offset.
+                if (offset.first != 0) {
+                    if (adx % offset.first != 0) { aligned = false; break; }
+                    int k = adx / offset.first;
+                    if (k < 1 || ady != k * offset.second) { aligned = false; break; }
+                }
+                else { // offset.first==0, so offset.second != 0
+                    if (ady % offset.second != 0) { aligned = false; break; }
+                    int k = ady / offset.second;
+                    if (k < 1 || adx != 0) { aligned = false; break; }
+                }
             }
-            alignedDirection = d;
-            return true;
+            if (aligned) {
+                alignedDirection = d;
+                return true;
+            }
         }
     }
     return false;
 }
+
 
 
 std::vector<Move> Board::generateMoves(Occupant side) const {
@@ -171,52 +193,46 @@ void Board::applyMove(const Move& m) {
         std::cout << "  Front cell: " << indexToNotation(front)
             << ", destination: " << (dest >= 0 ? indexToNotation(dest) : "off-board") << "\n";
 
-        // Handle pushing if the destination cell is occupied by an opponent.
+        // Check for opponent marble in destination.
         if (dest >= 0 && occupant[dest] != Occupant::EMPTY && occupant[dest] != occupant[front]) {
-            // Count how many contiguous opponent marbles are in the chain.
+            // Walk the chain of opponent marbles.
             int oppCount = 0;
             int cell = dest;
-            while (cell >= 0 && occupant[cell] != Occupant::EMPTY && occupant[cell] != occupant[front]) {
+            while (cell >= 0 && occupant[cell] != Occupant::EMPTY &&
+                occupant[cell] != occupant[front]) {
                 oppCount++;
                 cell = neighbors[cell][d];
             }
-            // According to Abalone rules, your group must outnumber the opponent marbles.
+            // Rule: moving group must outnumber opponent chain.
             if (oppCount >= sortedGroup.size()) {
                 throw std::runtime_error("Illegal move: cannot push, opponent group too large.");
             }
-            // Check that the cell immediately after the opponent chain is empty (if on board).
+            // If there is a cell after the opponent chain, it must be empty.
             if (cell >= 0 && occupant[cell] != Occupant::EMPTY) {
                 throw std::runtime_error("Illegal move: push blocked, destination not empty.");
             }
-            std::cout << "  Push detected: pushing " << oppCount << " opponent marble"
-                << (oppCount > 1 ? "s" : "") << ".\n";
-            // Collect the chain of opponent cells.
+            std::cout << "  Push detected: pushing " << oppCount
+                << " opponent marble" << (oppCount > 1 ? "s" : "") << ".\n";
+
+            // Collect indices of opponent chain.
             std::vector<int> chain;
             cell = dest;
             for (int i = 0; i < oppCount; i++) {
                 chain.push_back(cell);
                 cell = neighbors[cell][d];
             }
-            // Push the opponent marbles starting from the farthest one.
+            // Push opponent marbles in reverse order.
             for (int i = chain.size() - 1; i >= 0; i--) {
                 int from = chain[i];
-                int to;
-                if (i == chain.size() - 1) {
-                    // Destination for the farthest marble.
-                    to = cell; // may be -1, which means off-board.
-                }
-                else {
-                    to = chain[i + 1];
-                }
+                int to = (i == chain.size() - 1) ? cell : chain[i + 1];
                 if (to < 0) {
                     occupant[from] = Occupant::EMPTY;
                     std::cout << "    Marble at " << indexToNotation(from)
                         << " pushed off-board.\n";
                 }
                 else {
-                    if (occupant[to] != Occupant::EMPTY) {
+                    if (occupant[to] != Occupant::EMPTY)
                         throw std::runtime_error("Illegal move: push blocked while moving opponent marbles.");
-                    }
                     occupant[to] = occupant[from];
                     occupant[from] = Occupant::EMPTY;
                     std::cout << "    Marble at " << indexToNotation(from)
@@ -241,6 +257,7 @@ void Board::applyMove(const Move& m) {
             occupant[idx] = Occupant::EMPTY;
         }
     }
+
     else {
         // Side-step moves: move each marble individually.
         for (int idx : m.marbleIndices) {
