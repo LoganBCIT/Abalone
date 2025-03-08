@@ -58,9 +58,11 @@ public:
     // Returns true if the move is legal (applied without error),
     // false otherwise.
     bool tryMove(const std::vector<int>& group, int direction, Move& move) const;
-
+    std::set<std::vector<int>> generateColumnGroups(Occupant side) const;
     // Generate all legal moves for 'side'
     std::vector<Move> generateMoves(Occupant side) const;
+
+    std::vector<Move> generateUniqueMoves(Occupant side) const;
 
     void generateGroupMoves(const std::vector<int>& group, int d, std::vector<Move>& moves) const;
 

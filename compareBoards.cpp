@@ -74,20 +74,39 @@ std::vector<std::string> readLines(const std::string& filename) {
 void compareBoardsAndMoves(const std::string& desiredFilename,
     const std::string& actualBoardFilename,
     const std::string& movesFilename) {
-    // Read desired boards and normalize them into a set.
-    std::set<std::string> desiredSet = readNormalizedLines(desiredFilename);
 
-    // Read actual board configurations line-by-line (preserving order) and also normalize.
+    // --- Debug: Output raw and normalized actual board file ---
+    std::cout << "=== Raw Actual Board Lines (" << actualBoardFilename << ") ===\n";
     std::vector<std::string> actualLines = readLines(actualBoardFilename);
+    for (const auto& line : actualLines)
+        std::cout << line << "\n";
+
+    std::cout << "\n=== Normalized Actual Board Lines ===\n";
     std::vector<std::string> normalizedActual;
     for (const auto& line : actualLines) {
-        normalizedActual.push_back(normalizeBoardLine(line));
+        std::string norm = normalizeBoardLine(line);
+        normalizedActual.push_back(norm);
+        std::cout << norm << "\n";
     }
 
-    // Read the moves file (line-by-line); assume each line corresponds to a board configuration.
+    // --- Debug: Output raw and normalized desired board file ---
+    std::cout << "\n=== Raw Desired Board Lines (" << desiredFilename << ") ===\n";
+    std::vector<std::string> desiredRaw = readLines(desiredFilename);
+    for (const auto& line : desiredRaw)
+        std::cout << line << "\n";
+
+    std::cout << "\n=== Normalized Desired Board Lines ===\n";
+    std::set<std::string> desiredSet;
+    for (const auto& line : desiredRaw) {
+        std::string norm = normalizeBoardLine(line);
+        desiredSet.insert(norm);
+        std::cout << norm << "\n";
+    }
+
+    // Read moves file (line-by-line); assume each line corresponds to a board configuration.
     std::vector<std::string> moveLines = readLines(movesFilename);
 
-    // Create sets for overall comparison.
+    // Create set for actual normalized boards.
     std::set<std::string> actualSet(normalizedActual.begin(), normalizedActual.end());
 
     // Compute missing: desired configurations not in actual.
@@ -102,7 +121,8 @@ void compareBoardsAndMoves(const std::string& desiredFilename,
         desiredSet.begin(), desiredSet.end(),
         std::inserter(illegal, illegal.begin()));
 
-    std::cout << "=== Legal Board Configurations (present in both files) ===\n";
+    // Output comparisons.
+    std::cout << "\n=== Legal Board Configurations (present in both files) ===\n";
     {
         std::set<std::string> legal;
         std::set_intersection(desiredSet.begin(), desiredSet.end(),
@@ -128,8 +148,6 @@ void compareBoardsAndMoves(const std::string& desiredFilename,
     if (illegal.empty())
         std::cout << "None\n";
     else {
-        // For each illegal configuration, try to retrieve its corresponding move from moves file.
-        // We assume that the line numbers in actualLines and moveLines correspond.
         bool foundAny = false;
         for (size_t i = 0; i < normalizedActual.size(); i++) {
             if (illegal.find(normalizedActual[i]) != illegal.end()) {
