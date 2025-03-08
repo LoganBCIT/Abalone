@@ -60,11 +60,8 @@ public:
     bool tryMove(const std::vector<int>& group, int direction, Move& move) const;
     std::set<std::vector<int>> generateColumnGroups(Occupant side) const;
     // Generate all legal moves for 'side'
+
     std::vector<Move> generateMoves(Occupant side) const;
-
-    std::vector<Move> generateUniqueMoves(Occupant side) const;
-
-    void generateGroupMoves(const std::vector<int>& group, int d, std::vector<Move>& moves) const;
 
     // Apply a move to *this* board (modifying occupant[]).
     // Alternatively, you can return a new Board if you prefer a copy-on-write style.
@@ -135,6 +132,8 @@ private:
 
     // Build the neighbor array
     void initNeighbors();
+
+    static std::vector<int> canonicalizeGroup(const std::vector<int>& group);
 
     // Returns the alignment direction for a group if it is contiguous.
     // If the group is not aligned, returns -1.

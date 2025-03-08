@@ -7,6 +7,7 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept> 
+#include <unordered_set>
 
 // Directions in (dm, dy) form, matching your doc
 const std::array<std::pair<int, int>, Board::NUM_DIRECTIONS> Board::DIRECTION_OFFSETS = { {
@@ -142,43 +143,27 @@ bool Board::isGroupAligned(const std::vector<int>& group, int& alignedDirection)
     return false;
 }
 
-// Original move generation (unchanged)
-std::vector<Move> Board::generateMoves(Occupant side) const {
-    std::vector<Move> moves;
-    std::set<std::vector<int>> candidateGroups;
-    {
-        std::set<std::vector<int>> dfsGroups;
-        for (int i = 0; i < NUM_CELLS; i++) {
-            if (occupant[i] != side)
-                continue;
-            std::vector<int> group = { i };
-            dfsGroup(i, side, group, dfsGroups);
-        }
-        for (const auto& g : dfsGroups) {
-            int dummy;
-            if (g.size() == 1 || isGroupAligned(g, dummy)) {
-                candidateGroups.insert(g);
-            }
-        }
-    }
-    std::set<std::vector<int>> colGroups = generateColumnGroups(side);
-    candidateGroups.insert(colGroups.begin(), colGroups.end());
-    for (const auto& group : candidateGroups) {
-        for (int d = 0; d < NUM_DIRECTIONS; d++) {
-            Move candidateMove;
-            if (tryMove(group, d, candidateMove))
-                moves.push_back(candidateMove);
-        }
-    }
-    return moves;
+std::vector<int> Board::canonicalizeGroup(const std::vector<int>& group) {
+    std::vector<int> canon = group;
+    std::sort(canon.begin(), canon.end(), [](int a, int b) {
+        auto ca = s_indexToCoord[a];
+        auto cb = s_indexToCoord[b];
+        return (ca.second < cb.second) || (ca.second == cb.second && ca.first < cb.first);
+        });
+    return canon;
 }
 
-// NEW: Generate moves that yield unique board states.
-std::vector<Move> Board::generateUniqueMoves(Occupant side) const {
-    std::vector<Move> uniqueMoves;
-    std::set<std::string> seenStates;
 
-    std::set<std::vector<int>> candidateGroups;
+// New version of generateMoves that uses canonical groups to eliminate duplicates
+std::vector<Move> Board::generateMoves(Occupant side) const {
+    std::vector<Move> moves;
+
+    // Use a set keyed on the canonical string representation of a group.
+    // (Alternatively, you could write a custom comparator for vector<int>.)
+    std::set<std::string> uniqueGroupKeys;
+    std::vector<std::vector<int>> candidateGroups;
+
+    // --- Generate candidate groups via DFS ---
     {
         std::set<std::vector<int>> dfsGroups;
         for (int i = 0; i < NUM_CELLS; i++) {
@@ -189,29 +174,58 @@ std::vector<Move> Board::generateUniqueMoves(Occupant side) const {
         }
         for (const auto& g : dfsGroups) {
             int dummy;
+            // Only consider single marbles or aligned groups
             if (g.size() == 1 || isGroupAligned(g, dummy)) {
-                candidateGroups.insert(g);
-            }
-        }
-    }
-    std::set<std::vector<int>> colGroups = generateColumnGroups(side);
-    candidateGroups.insert(colGroups.begin(), colGroups.end());
-
-    for (const auto& group : candidateGroups) {
-        for (int d = 0; d < NUM_DIRECTIONS; d++) {
-            Move candidateMove;
-            if (tryMove(group, d, candidateMove)) {
-                Board copy = *this;
-                copy.applyMove(candidateMove);
-                std::string state = copy.toBoardString();
-                if (seenStates.find(state) == seenStates.end()) {
-                    seenStates.insert(state);
-                    uniqueMoves.push_back(candidateMove);
+                auto canon = canonicalizeGroup(g);
+                // Create a key string from the canonical group
+                std::string key;
+                for (int idx : canon) {
+                    key += std::to_string(idx) + ",";
+                }
+                // Insert if unique
+                if (uniqueGroupKeys.insert(key).second) {
+                    candidateGroups.push_back(canon);
                 }
             }
         }
     }
-    return uniqueMoves;
+
+    // --- Generate candidate groups via column grouping ---
+    {
+        auto colGroups = generateColumnGroups(side);
+        for (const auto& g : colGroups) {
+            auto canon = canonicalizeGroup(g);
+            std::string key;
+            for (int idx : canon) {
+                key += std::to_string(idx) + ",";
+            }
+            if (uniqueGroupKeys.insert(key).second) {
+                candidateGroups.push_back(canon);
+            }
+        }
+    }
+
+    // Now, for each unique candidate group, try every direction.
+    for (const auto& group : candidateGroups) {
+        for (int d = 0; d < NUM_DIRECTIONS; d++) {
+            Move candidateMove;
+            if (tryMove(group, d, candidateMove)) {
+                moves.push_back(candidateMove);
+            }
+        }
+    }
+
+    return moves;
+}
+
+static inline std::string trim(const std::string& s) {
+    size_t start = 0;
+    while (start < s.size() && std::isspace(static_cast<unsigned char>(s[start])))
+        start++;
+    size_t end = s.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(s[end - 1])))
+        end--;
+    return s.substr(start, end - start);
 }
 
 void Board::applyMove(const Move& m) {
@@ -331,32 +345,20 @@ std::string Board::moveToNotation(const Move& m, Occupant side) {
 }
 
 std::string Board::toBoardString() const {
-    std::vector<std::string> blackCells;
-    std::vector<std::string> whiteCells;
-    for (int i = 0; i < NUM_CELLS; i++) {
-        if (occupant[i] == Occupant::BLACK) {
-            blackCells.push_back(indexToNotation(i) + "b");
-        }
-        else if (occupant[i] == Occupant::WHITE) {
-            whiteCells.push_back(indexToNotation(i) + "w");
-        }
-    }
-    auto cmp = [](const std::string& a, const std::string& b) {
-        return a < b;
-        };
-    std::sort(blackCells.begin(), blackCells.end(), cmp);
-    std::sort(whiteCells.begin(), whiteCells.end(), cmp);
-    std::vector<std::string> all;
-    all.reserve(blackCells.size() + whiteCells.size());
-    for (auto& bc : blackCells) all.push_back(bc);
-    for (auto& wc : whiteCells) all.push_back(wc);
     std::string result;
-    for (size_t i = 0; i < all.size(); i++) {
-        if (i > 0) result += ",";
-        result += all[i];
+    bool first = true;
+    for (int i = 0; i < NUM_CELLS; i++) {
+        if (occupant[i] == Occupant::BLACK || occupant[i] == Occupant::WHITE) {
+            if (!first)
+                result += ",";
+            result += indexToNotation(i);
+            result += (occupant[i] == Occupant::BLACK ? "b" : "w");
+            first = false;
+        }
     }
     return result;
 }
+
 
 std::string Board::indexToNotation(int idx) {
     auto [m, y] = s_indexToCoord[idx];

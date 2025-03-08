@@ -8,21 +8,13 @@
 (b, G6, F5, E4) i → NE
 (b, E6, E5) i → E
 (b, F5, E5) i → NW
-(b, F5, E5) i → NW
-(b, F5, E5, D5) i → NW
 (b, G6, F5) i → NE
 (b, F8, F7, F6) i → E
 (b, H6, G6, F6) i → NW
 (b, F8, F7) i → E
 (b, F8) s → E
 (b, F8) s → SE
-(b, F8, F7) i → E
-(b, F8, F7, F6) i → E
-(b, G6, F5) i → NE
-(b, G6, F5, E4) i → NE
 (b, H6, G6) i → NW
 (b, H6) s → W
 (b, H6) s → NW
 (b, H6) s → NE
-(b, H6, G6) i → NW
-(b, H6, G6, F6) i → NW
