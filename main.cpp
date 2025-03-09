@@ -6,6 +6,7 @@
 #include <string>
 #include <cctype>
 
+// Helper: Trim whitespace from the beginning and end of a string.
 std::string trim(const std::string& s) {
     size_t start = 0;
     while (start < s.size() && std::isspace(static_cast<unsigned char>(s[start])))
@@ -16,11 +17,19 @@ std::string trim(const std::string& s) {
     return s.substr(start, end - start);
 }
 
-int main() {
-    // Open the original input file
-    std::ifstream fin("Test2.input");
+int main(int argc, char* argv[]) {
+    // Check for an input filename argument.
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <input_file>\n";
+        return 1;
+    }
+
+    std::string inputFilename = argv[1];
+
+    // Open the original input file.
+    std::ifstream fin(inputFilename);
     if (!fin.is_open()) {
-        std::cerr << "Error: could not open file: Test2.input\n";
+        std::cerr << "Error: could not open file: " << inputFilename << "\n";
         return 1;
     }
 
@@ -56,8 +65,8 @@ int main() {
     // Generate moves using board.nextToMove from the file.
     auto moves = board.generateMoves(board.nextToMove);
 
-    std::ofstream movesFile("1-moves.txt");
-    std::ofstream boardsFile("1-boards.txt");
+    std::ofstream movesFile("moves.txt");
+    std::ofstream boardsFile("boards.txt");
 
     // For each move:
     for (auto& m : moves) {
