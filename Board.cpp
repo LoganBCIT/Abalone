@@ -6,7 +6,7 @@
 #include <sstream>
 #include <vector>
 #include <algorithm>
-#include <stdexcept> 
+#include <stdexcept>
 #include <unordered_set>
 
 // Directions in (dm, dy) form, matching your doc
@@ -22,6 +22,12 @@ const std::array<std::pair<int, int>, Board::NUM_DIRECTIONS> Board::DIRECTION_OF
 static const std::array<int, Board::NUM_DIRECTIONS> OPPOSITES = { 1, 0, 5, 4, 3, 2 };
 
 bool Board::tryMove(const std::vector<int>& group, int direction, Move& move) const {
+    // Log candidate move attempt
+    std::cout << "Trying move for group: ";
+    for (int idx : group)
+        std::cout << indexToNotation(idx) << " ";
+    std::cout << "in direction " << direction << "\n";
+
     Board temp = *this;
     move.marbleIndices = group;
     move.direction = direction;
@@ -31,6 +37,7 @@ bool Board::tryMove(const std::vector<int>& group, int direction, Move& move) co
     else {
         int alignedDir;
         if (isGroupAligned(group, alignedDir)) {
+            std::cout << "Group is aligned. Aligned direction: " << alignedDir << "\n";
             if (direction == alignedDir || direction == OPPOSITES[alignedDir])
                 move.isInline = true;
             else
@@ -43,9 +50,14 @@ bool Board::tryMove(const std::vector<int>& group, int direction, Move& move) co
     try {
         temp.applyMove(move);
     }
-    catch (const std::runtime_error&) {
+    catch (const std::runtime_error& e) {
+        std::cout << "Move failed: " << e.what() << "\n";
         return false;
     }
+    std::cout << "Move succeeded for group: ";
+    for (int idx : group)
+        std::cout << indexToNotation(idx) << " ";
+    std::cout << "direction " << direction << "\n";
     return true;
 }
 
@@ -72,6 +84,11 @@ std::set<std::vector<int>> Board::generateColumnGroups(Occupant side) const {
                     break;
                 }
             }
+            // Log the column group before splitting
+            std::cout << "Column group from " << indexToNotation(i) << " in direction " << d << ": ";
+            for (int idx : col)
+                std::cout << indexToNotation(idx) << " ";
+            std::cout << "\n";
             for (size_t s = 1; s <= col.size(); s++) {
                 std::vector<int> group(col.begin(), col.begin() + s);
                 groups.insert(group);
@@ -82,6 +99,12 @@ std::set<std::vector<int>> Board::generateColumnGroups(Occupant side) const {
 }
 
 void Board::dfsGroup(int current, Occupant side, std::vector<int>& group, std::set<std::vector<int>>& result) const {
+    // Log current DFS recursion state
+    std::cout << "DFS at " << indexToNotation(current) << " with group: ";
+    for (int idx : group)
+        std::cout << indexToNotation(idx) << " ";
+    std::cout << "\n";
+
     result.insert(group);
     if (group.size() == 3)
         return;
@@ -92,6 +115,12 @@ void Board::dfsGroup(int current, Occupant side, std::vector<int>& group, std::s
                 group.push_back(n);
                 dfsGroup(n, side, group, result);
                 group.pop_back();
+            }
+            else {
+                // Log when a candidate is skipped
+                std::cout << "Skipping " << indexToNotation(n)
+                    << " (either already in group or not > last element "
+                    << indexToNotation(group.back()) << ")\n";
             }
         }
     }
@@ -159,7 +188,6 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
     std::vector<Move> moves;
 
     // Use a set keyed on the canonical string representation of a group.
-    // (Alternatively, you could write a custom comparator for vector<int>.)
     std::set<std::string> uniqueGroupKeys;
     std::vector<std::vector<int>> candidateGroups;
 
@@ -172,7 +200,12 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
             std::vector<int> group = { i };
             dfsGroup(i, side, group, dfsGroups);
         }
+        std::cout << "DFS groups for side " << (side == Occupant::BLACK ? "BLACK" : "WHITE") << ":\n";
         for (const auto& g : dfsGroups) {
+            std::cout << "Group: ";
+            for (int idx : g)
+                std::cout << indexToNotation(idx) << " ";
+            std::cout << "\n";
             int dummy;
             // Only consider single marbles or aligned groups
             if (g.size() == 1 || isGroupAligned(g, dummy)) {
@@ -185,7 +218,17 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
                 // Insert if unique
                 if (uniqueGroupKeys.insert(key).second) {
                     candidateGroups.push_back(canon);
+                    std::cout << "Accepted DFS group key: " << key << "\n";
                 }
+                else {
+                    std::cout << "Duplicate DFS group key: " << key << "\n";
+                }
+            }
+            else {
+                std::cout << "Group not aligned (and not singleton): ";
+                for (int idx : g)
+                    std::cout << indexToNotation(idx) << " ";
+                std::cout << "\n";
             }
         }
     }
@@ -193,7 +236,12 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
     // --- Generate candidate groups via column grouping ---
     {
         auto colGroups = generateColumnGroups(side);
+        std::cout << "Column groups for side " << (side == Occupant::BLACK ? "BLACK" : "WHITE") << ":\n";
         for (const auto& g : colGroups) {
+            std::cout << "Column Group: ";
+            for (int idx : g)
+                std::cout << indexToNotation(idx) << " ";
+            std::cout << "\n";
             auto canon = canonicalizeGroup(g);
             std::string key;
             for (int idx : canon) {
@@ -201,9 +249,15 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
             }
             if (uniqueGroupKeys.insert(key).second) {
                 candidateGroups.push_back(canon);
+                std::cout << "Accepted column group key: " << key << "\n";
+            }
+            else {
+                std::cout << "Duplicate column group key: " << key << "\n";
             }
         }
     }
+
+    std::cout << "Total candidate groups after deduplication: " << candidateGroups.size() << "\n";
 
     // Now, for each unique candidate group, try every direction.
     for (const auto& group : candidateGroups) {
@@ -215,6 +269,7 @@ std::vector<Move> Board::generateMoves(Occupant side) const {
         }
     }
 
+    std::cout << "Total legal moves generated: " << moves.size() << "\n";
     return moves;
 }
 
