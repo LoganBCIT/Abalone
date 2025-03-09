@@ -18,7 +18,7 @@ std::string trim(const std::string& s) {
 
 int main() {
     // Open the original input file
-    std::ifstream fin("Test1.input");
+    std::ifstream fin("Test2.input");
     if (!fin.is_open()) {
         std::cerr << "Error: could not open file: Test2.input\n";
         return 1;

@@ -67,6 +67,11 @@ public:
     // Alternatively, you can return a new Board if you prefer a copy-on-write style.
     void applyMove(const Move& m);
 
+    // Returns the index of the marble in 'group' that is furthest
+    // in the given direction (based on DIRECTION_OFFSETS).
+    int getFrontCell(const std::vector<int>& group, int direction) const;
+
+
     // Make a notation string like "(b, 2m) i → NW" given a Move & occupant color
     static std::string moveToNotation(const Move& m, Occupant side);
 
