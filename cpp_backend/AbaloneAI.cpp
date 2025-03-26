@@ -1,6 +1,5 @@
 #include "AbaloneAI.h"
 #include "Board.h"
-#include "Evaluation.h"
 
 #include <limits>
 #include <algorithm>
